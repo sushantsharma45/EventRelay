@@ -8,6 +8,7 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   }, 'Unhandled request error');
 
   if (res.headersSent) return;
+  
   res.status(500).json({
     error: {
       code: 'INTERNAL_ERROR',

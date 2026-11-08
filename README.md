@@ -1,12 +1,14 @@
-﻿# EventRelay
+# EventRelay
 
 EventRelay is a webhook delivery platform for applications that need to send events to customer-configured endpoints.
 
 ## Current capabilities
 
-The API foundation includes strict TypeScript, validated runtime configuration, security headers, scoped CORS, request IDs, structured logs with credential redaction, centralized errors, graceful shutdown, PostgreSQL connection pooling, database readiness checks, and versioned migrations for the core relational model.
+The API provides account registration and login, short-lived bearer access tokens, authenticated account details, organization management, member management, and role-based organization access. New accounts get a private organization with the owner role. Organization data is checked against the signed-in user's membership before member routes return data.
 
-Authentication, public event ingestion, asynchronous delivery, and the dashboard are still under development.
+Authentication uses bcrypt password hashes, JWTs signed with a local secret, and rate limits on registration and login. PostgreSQL stores accounts, organizations, and memberships. The API also includes validated runtime configuration, security headers, request IDs, structured logs with credential redaction, centralized errors, graceful shutdown, connection pooling, readiness checks, and numbered SQL migrations.
+
+Members can be added by email after they have created an account. Organization owners can assign admin, developer, or viewer roles. Admins can manage developer and viewer members but cannot grant admin access or modify other admins. Invitations by email, password reset, public event ingestion, asynchronous delivery, and the dashboard are not available yet.
 
 ## Requirements
 
@@ -16,15 +18,29 @@ Authentication, public event ingestion, asynchronous delivery, and the dashboard
 
 ## Local setup
 
-1. Install dependencies: `npm install`.
-2. Update `.env` with a PostgreSQL database URL available on your machine.
-3. Create the database named in `DATABASE_URL` if it does not exist.
-4. Apply migrations: `npm run db:migrate`.
-5. Start the API: `npm run dev`.
+1. Install dependencies with `npm install`.
+2. Create a PostgreSQL database and set its connection URL in `.env` as `DATABASE_URL`.
+3. Set `JWT_SECRET` in `.env` to a random value containing at least 32 characters.
+4. Apply migrations with `npm run db:migrate`.
+5. Start the API with `npm run dev`.
 6. Check liveness at `http://localhost:4401/health` and database readiness at `http://localhost:4401/health/ready`.
+
+## Authentication API
+
+All request and response bodies use JSON. Successful registration and login return a bearer token. Send it on protected requests as `Authorization: Bearer <token>`.
+
+- `POST /v1/auth/register` — create an account and its owner organization. Requires `name`, `email`, and a password of at least 12 characters and at most 72 UTF-8 bytes.
+- `POST /v1/auth/login` — authenticate with `email` and `password`.
+- `GET /v1/auth/me` — return the authenticated account.
+- `GET /v1/organizations` — list the signed-in user's organizations and roles.
+- `POST /v1/organizations` — create an organization; the creator is its owner.
+- `GET /v1/organizations/:organizationId/members` — list members when the signed-in user belongs to that organization.
+- `POST /v1/organizations/:organizationId/members` — add an existing account by `email` and assign `admin`, `developer`, or `viewer`.
+- `PATCH /v1/organizations/:organizationId/members/:userId` — change a member's role.
+- `DELETE /v1/organizations/:organizationId/members/:userId` — remove a member.
 
 ## Checks
 
-- `npm test` runs API health-route smoke tests.
+- `npm test` runs API health and database-backed authentication and authorization tests.
 - `npm run build` runs strict TypeScript validation.
 - `npm run db:migrate` applies unapplied numbered SQL migrations under `src/db/migrations`.

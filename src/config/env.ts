@@ -6,6 +6,7 @@ const schema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   CORS_ORIGIN: z.string().url().default('http://localhost:5173'),
   DATABASE_URL: z.string().url(),
+  JWT_SECRET: z.string().min(32),
   DB_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });

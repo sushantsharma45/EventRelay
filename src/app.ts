@@ -5,7 +5,9 @@ import helmet from 'helmet';
 import { env } from './config/env.js';
 import { logger } from './logger.js';
 import { errorHandler } from './middleware/error-handler.js';
+import { authRouter } from './routes/auth.js';
 import { healthRouter } from './routes/health.js';
+import { organizationsRouter } from './routes/organizations.js';
 
 export function createApp() {
   const app = express();
@@ -28,6 +30,8 @@ export function createApp() {
     next();
   });
   app.use('/health', healthRouter);
+  app.use('/v1/auth', authRouter);
+  app.use('/v1/organizations', organizationsRouter);
   app.use((_req, res) =>
     res.status(404).json({
       error: {
