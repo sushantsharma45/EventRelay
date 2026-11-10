@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc --noEmit",
-    "test": "tsx --test tests/health.test.ts tests/auth.test.ts",
+    "test": "tsx --test tests/health.test.ts tests/auth.test.ts tests/resources.test.ts",
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {

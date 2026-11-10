@@ -8,6 +8,7 @@ import { errorHandler } from './middleware/error-handler.js';
 import { authRouter } from './routes/auth.js';
 import { healthRouter } from './routes/health.js';
 import { organizationsRouter } from './routes/organizations.js';
+import { resourceRouter } from './routes/resources.js';
 
 export function createApp() {
   const app = express();
@@ -32,6 +33,7 @@ export function createApp() {
   app.use('/health', healthRouter);
   app.use('/v1/auth', authRouter);
   app.use('/v1/organizations', organizationsRouter);
+  app.use('/v1/organizations/:organizationId/projects', resourceRouter);
   app.use((_req, res) =>
     res.status(404).json({
       error: {

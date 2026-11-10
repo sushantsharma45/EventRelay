@@ -6,7 +6,7 @@ EventRelay is a webhook delivery platform for applications that need to send eve
 
 The API provides account registration and login, short-lived bearer access tokens, authenticated account details, organization management, member management, and role-based organization access. New accounts get a private organization with the owner role. Organization data is checked against the signed-in user's membership before member routes return data.
 
-Authentication uses bcrypt password hashes, JWTs signed with a local secret, and rate limits on registration and login. PostgreSQL stores accounts, organizations, and memberships. The API also includes validated runtime configuration, security headers, request IDs, structured logs with credential redaction, centralized errors, graceful shutdown, connection pooling, readiness checks, and numbered SQL migrations.
+Authentication uses bcrypt password hashes, JWTs signed with a local secret, and rate limits on registration and login. PostgreSQL stores accounts, organizations, memberships, projects, environments, API keys, endpoints, and subscriptions. The API also includes validated runtime configuration, security headers, request IDs, structured logs with credential redaction, centralized errors, graceful shutdown, connection pooling, readiness checks, and numbered SQL migrations.
 
 Members can be added by email after they have created an account. Organization owners can assign admin, developer, or viewer roles. Admins can manage developer and viewer members but cannot grant admin access or modify other admins. Invitations by email, password reset, public event ingestion, asynchronous delivery, and the dashboard are not available yet.
 
@@ -20,7 +20,7 @@ Members can be added by email after they have created an account. Organization o
 
 1. Install dependencies with `npm install`.
 2. Create a PostgreSQL database and set its connection URL in `.env` as `DATABASE_URL`.
-3. Set `JWT_SECRET` in `.env` to a random value containing at least 32 characters.
+3. Set `JWT_SECRET` in `.env` to a random value containing at least 32 characters. Set `DATA_ENCRYPTION_KEY` to a base64-encoded, randomly generated 32-byte key.
 4. Apply migrations with `npm run db:migrate`.
 5. Start the API with `npm run dev`.
 6. Check liveness at `http://localhost:4401/health` and database readiness at `http://localhost:4401/health/ready`.
@@ -39,8 +39,23 @@ All request and response bodies use JSON. Successful registration and login retu
 - `PATCH /v1/organizations/:organizationId/members/:userId` — change a member's role.
 - `DELETE /v1/organizations/:organizationId/members/:userId` — remove a member.
 
+## Project resources API
+
+All resource routes require a bearer token and an organization membership. Owners, admins, and developers can create and change resources; viewers can read them.
+
+- `GET/POST /v1/organizations/:organizationId/projects` — list or create projects.
+- `PATCH/DELETE /v1/organizations/:organizationId/projects/:projectId` — rename or delete a project.
+- `GET/POST /v1/organizations/:organizationId/projects/:projectId/environments` — list or create project environments.
+- `GET/POST /v1/organizations/:organizationId/projects/:projectId/environments/:environmentId/api-keys` — list or create scoped API keys.
+- `DELETE /v1/organizations/:organizationId/projects/:projectId/environments/:environmentId/api-keys/:keyId` — revoke an API key.
+- `GET/POST /v1/organizations/:organizationId/projects/:projectId/environments/:environmentId/endpoints` — list or create webhook endpoints and their event subscriptions.
+- `PATCH/DELETE /v1/organizations/:organizationId/projects/:projectId/environments/:environmentId/endpoints/:endpointId` — update or remove an endpoint.
+- `PUT /v1/organizations/:organizationId/projects/:projectId/environments/:environmentId/endpoints/:endpointId/subscriptions` — replace the endpoint's event type subscriptions.
+
+An API key's secret and an endpoint's signing secret are returned only when created. API key secrets are stored as hashes. Endpoint signing secrets are encrypted with `DATA_ENCRYPTION_KEY`.
+
 ## Checks
 
-- `npm test` runs API health and database-backed authentication and authorization tests.
+- `npm test` runs API health, authentication, authorization, and database-backed resource management tests.
 - `npm run build` runs strict TypeScript validation.
 - `npm run db:migrate` applies unapplied numbered SQL migrations under `src/db/migrations`.
