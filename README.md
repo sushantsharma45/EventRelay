@@ -4,26 +4,29 @@ EventRelay is a webhook delivery platform for applications that need to send eve
 
 ## Current capabilities
 
-The API provides account registration and login, short-lived bearer access tokens, authenticated account details, organization management, member management, and role-based organization access. New accounts get a private organization with the owner role. Organization data is checked against the signed-in user's membership before member routes return data.
+The API provides account registration and login, short-lived bearer access tokens, authenticated account details, organization management, member management, role-based access, projects, environments, API keys, endpoint subscriptions, idempotent event ingestion, an outbox publisher, and signed webhook delivery.
 
-Authentication uses bcrypt password hashes, JWTs signed with a local secret, and rate limits on registration and login. PostgreSQL stores accounts, organizations, memberships, projects, environments, API keys, endpoints, and subscriptions. The API also includes validated runtime configuration, security headers, request IDs, structured logs with credential redaction, centralized errors, graceful shutdown, connection pooling, readiness checks, and numbered SQL migrations.
+Authentication uses bcrypt password hashes, JWTs signed with a local secret, and rate limits on registration and login. PostgreSQL stores application and delivery data. API key secrets are stored as hashes; endpoint signing secrets are encrypted with `DATA_ENCRYPTION_KEY`.
 
-Members can be added by email after they have created an account. Organization owners can assign admin, developer, or viewer roles. Admins can manage developer and viewer members but cannot grant admin access or modify other admins. Invitations by email, password reset, asynchronous delivery and the dashboard are not available yet.
+Invitations by email, password reset, retry policies, dead-letter recovery, replay, and the dashboard are not available yet.
 
 ## Requirements
 
 - Node.js 22 or newer
 - npm
 - PostgreSQL 16 or newer
+- A Redis-compatible server
 
 ## Local setup
 
 1. Install dependencies with `npm install`.
 2. Create a PostgreSQL database and set its connection URL in `.env` as `DATABASE_URL`.
-3. Set `JWT_SECRET` in `.env` to a random value containing at least 32 characters. Set `DATA_ENCRYPTION_KEY` to a base64-encoded, randomly generated 32-byte key.
-4. Apply migrations with `npm run db:migrate`.
-5. Start the API with `npm run dev`.
-6. Check liveness at `http://localhost:4401/health` and database readiness at `http://localhost:4401/health/ready`.
+3. Set `JWT_SECRET` to a random value containing at least 32 characters. Set `DATA_ENCRYPTION_KEY` to a base64-encoded, randomly generated 32-byte key.
+4. Start a Redis-compatible server at the `REDIS_URL` in `.env` (default `redis://127.0.0.1:6379`). For local webhook receiver testing, `ALLOW_PRIVATE_WEBHOOKS=true` permits private destinations only when `NODE_ENV` is not `production`.
+5. Apply migrations with `npm run db:migrate`.
+6. Start the API with `npm run dev`.
+7. In a second terminal, start the outbox publisher and delivery worker with `npm run worker`.
+8. Check API liveness at `http://localhost:4401/health` and database readiness at `http://localhost:4401/health/ready`.
 
 ## Authentication API
 
@@ -52,14 +55,16 @@ All resource routes require a bearer token and an organization membership. Owner
 - `PATCH/DELETE /v1/organizations/:organizationId/projects/:projectId/environments/:environmentId/endpoints/:endpointId` — update or remove an endpoint.
 - `PUT /v1/organizations/:organizationId/projects/:projectId/environments/:environmentId/endpoints/:endpointId/subscriptions` — replace the endpoint's event type subscriptions.
 
-An API key's secret and an endpoint's signing secret are returned only when created. API key secrets are stored as hashes. Endpoint signing secrets are encrypted with `DATA_ENCRYPTION_KEY`.
+API key secrets and endpoint signing secrets are returned only when created. Save them at that time.
 
-## Event ingestion API
+## Event ingestion and delivery
 
-`POST /v1/events` accepts an event using an environment API key in the bearer authorization header. Include an `Idempotency-Key` header and a JSON body with `eventType`, an object `payload`, and optional object `metadata`. New events are saved together with an outbox record in one database transaction and return `202 Accepted`. Repeating the same key and content returns the original event; reusing a key with different content returns `409 Conflict`. Event delivery is handled in a later stage.
+`POST /v1/events` accepts an event using an environment API key in the bearer authorization header. Include an `Idempotency-Key` header and a JSON body with `eventType`, an object `payload`, and optional object `metadata`. New events are saved together with an outbox record in one database transaction and return `202 Accepted`. Repeating the same key and content returns the original event; reusing a key with different content returns `409 Conflict`.
+
+The outbox publisher queues events in BullMQ. The worker sends matching webhook subscriptions and stores the delivery attempt. Delivery requests include `X-EventRelay-Event-Id`, `X-EventRelay-Event-Type`, `X-EventRelay-Timestamp`, and `X-EventRelay-Signature` headers. The signature is HMAC-SHA256 over `<timestamp>.<raw-json-body>` using the endpoint signing secret.
 
 ## Checks
 
-- `npm test` runs health, authentication, authorization, resource-management, and database-backed ingestion tests.
+- `npm test` runs health, authentication, authorization, resource-management, ingestion, and signed-delivery tests. The signed-delivery test does not require Redis; running `npm run worker` does.
 - `npm run build` runs strict TypeScript validation.
 - `npm run db:migrate` applies unapplied numbered SQL migrations under `src/db/migrations`.

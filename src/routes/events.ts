@@ -8,8 +8,8 @@ export const eventsRouter = Router();
 
 const eventSchema = z.object({
   eventType: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/),
-  payload: z.record(z.unknown()),
-  metadata: z.record(z.unknown()).default({}),
+  payload: z.record(z.string(), z.unknown()),
+  metadata: z.record(z.string(), z.unknown()).default({}),
 }).strict();
 
 eventsRouter.post(

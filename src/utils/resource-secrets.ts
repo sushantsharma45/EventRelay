@@ -22,3 +22,22 @@ export function generateApiKey() {
     hash: crypto.createHash('sha256').update(secret).digest('hex'),
   };
 }
+
+export function decryptSecret(value: string) {
+  const [encodedIv, encodedTag, encodedData] = value.split('.');
+  if (!encodedIv || !encodedTag || !encodedData) {
+    throw new Error('Stored signing secret has an invalid format.');
+  }
+
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm',
+    encryptionKey,
+    Buffer.from(encodedIv, 'base64url'),
+  );
+  
+  decipher.setAuthTag(Buffer.from(encodedTag, 'base64url'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encodedData, 'base64url')),
+    decipher.final(),
+  ]).toString('utf8');
+}

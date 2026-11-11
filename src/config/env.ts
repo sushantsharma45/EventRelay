@@ -8,6 +8,8 @@ const schema = z.object({
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(32),
   DATA_ENCRYPTION_KEY: z.string().min(43).max(44).refine((value) => Buffer.from(value, 'base64').length === 32),
+  REDIS_URL: z.string().url().default('redis://127.0.0.1:6379'),
+  ALLOW_PRIVATE_WEBHOOKS: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
   DB_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
