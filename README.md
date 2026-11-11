@@ -8,7 +8,7 @@ The API provides account registration and login, short-lived bearer access token
 
 Authentication uses bcrypt password hashes, JWTs signed with a local secret, and rate limits on registration and login. PostgreSQL stores accounts, organizations, memberships, projects, environments, API keys, endpoints, and subscriptions. The API also includes validated runtime configuration, security headers, request IDs, structured logs with credential redaction, centralized errors, graceful shutdown, connection pooling, readiness checks, and numbered SQL migrations.
 
-Members can be added by email after they have created an account. Organization owners can assign admin, developer, or viewer roles. Admins can manage developer and viewer members but cannot grant admin access or modify other admins. Invitations by email, password reset, public event ingestion, asynchronous delivery, and the dashboard are not available yet.
+Members can be added by email after they have created an account. Organization owners can assign admin, developer, or viewer roles. Admins can manage developer and viewer members but cannot grant admin access or modify other admins. Invitations by email, password reset, asynchronous delivery and the dashboard are not available yet.
 
 ## Requirements
 
@@ -54,8 +54,12 @@ All resource routes require a bearer token and an organization membership. Owner
 
 An API key's secret and an endpoint's signing secret are returned only when created. API key secrets are stored as hashes. Endpoint signing secrets are encrypted with `DATA_ENCRYPTION_KEY`.
 
+## Event ingestion API
+
+`POST /v1/events` accepts an event using an environment API key in the bearer authorization header. Include an `Idempotency-Key` header and a JSON body with `eventType`, an object `payload`, and optional object `metadata`. New events are saved together with an outbox record in one database transaction and return `202 Accepted`. Repeating the same key and content returns the original event; reusing a key with different content returns `409 Conflict`. Event delivery is handled in a later stage.
+
 ## Checks
 
-- `npm test` runs API health, authentication, authorization, and database-backed resource management tests.
+- `npm test` runs health, authentication, authorization, resource-management, and database-backed ingestion tests.
 - `npm run build` runs strict TypeScript validation.
 - `npm run db:migrate` applies unapplied numbered SQL migrations under `src/db/migrations`.
