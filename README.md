@@ -8,7 +8,7 @@ The API provides account registration and login, short-lived bearer access token
 
 Authentication uses bcrypt password hashes, JWTs signed with a local secret, and rate limits on registration and login. PostgreSQL stores application and delivery data. API key secrets are stored as hashes; endpoint signing secrets are encrypted with `DATA_ENCRYPTION_KEY`.
 
-Invitations by email, password reset, retry policies, dead-letter recovery, replay, and the dashboard are not available yet.
+Invitations by email, password reset, the dashboard is not available yet.
 
 ## Requirements
 
@@ -63,8 +63,15 @@ API key secrets and endpoint signing secrets are returned only when created. Sav
 
 The outbox publisher queues events in BullMQ. The worker sends matching webhook subscriptions and stores the delivery attempt. Delivery requests include `X-EventRelay-Event-Id`, `X-EventRelay-Event-Type`, `X-EventRelay-Timestamp`, and `X-EventRelay-Signature` headers. The signature is HMAC-SHA256 over `<timestamp>.<raw-json-body>` using the endpoint signing secret.
 
+## Delivery recovery
+
+Retryable network failures and HTTP 408, 425, 429, and 5xx responses use exponential backoff starting at 2 seconds, capped at 1 hour, for up to 8 attempts. Other HTTP errors are dead-lettered immediately. The worker recovers deliveries left processing for more than 2 minutes.
+
+- `GET /v1/organizations/:organizationId/deliveries` — list delivery state and filter with `?state=dead_lettered`.
+- `GET /v1/organizations/:organizationId/deliveries/:deliveryId/attempts` — view request attempts and response details.
+- `POST /v1/organizations/:organizationId/deliveries/:deliveryId/replay` — replay a failed or dead-lettered delivery. The new delivery is queued through the outbox; a delivery can be replayed only once.
 ## Checks
 
-- `npm test` runs health, authentication, authorization, resource-management, ingestion, and signed-delivery tests. The signed-delivery test does not require Redis; running `npm run worker` does.
+- `npm test` runs health, authentication, authorization, resource-management, ingestion, retry, dead-letter, replay, and signed-delivery tests. The signed-delivery test does not require Redis; running `npm run worker` does.
 - `npm run build` runs strict TypeScript validation.
 - `npm run db:migrate` applies unapplied numbered SQL migrations under `src/db/migrations`.

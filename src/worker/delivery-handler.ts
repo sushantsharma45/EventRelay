@@ -15,6 +15,10 @@ interface DeliveryTarget {
   signing_secret_enc: string;
 }
 
+const maxAttempts = 8;
+const retryBaseSeconds = 2;
+const retryMaxSeconds = 60 * 60;
+
 async function loadDeliveries(eventId: string) {
   const client = await pool.connect();
   try {
@@ -38,16 +42,27 @@ async function loadDeliveries(eventId: string) {
   }
 
   const result = await pool.query<DeliveryTarget>(
-    `SELECT d.id, d.event_id, ev.event_type, ev.payload, ev.metadata, ev.created_at,
-       ep.url, ep.signing_secret_enc
+    `SELECT d.id, d.event_id, ev.event_type, ev.payload, ev.metadata, ev.created_at, ep.url, ep.signing_secret_enc
      FROM deliveries d
      JOIN events ev ON ev.id = d.event_id
      JOIN endpoints ep ON ep.id = d.endpoint_id
-     WHERE d.event_id = $1 AND d.state IN ('pending', 'failed')
+     WHERE d.event_id = $1 AND d.state IN ('pending', 'retrying', 'failed') AND d.next_attempt_at <= now()
      ORDER BY d.created_at, d.id`,
     [eventId],
   );
   return result.rows;
+}
+
+async function loadDelivery(deliveryId: string) {
+  const result = await pool.query<DeliveryTarget>(
+    `SELECT d.id, d.event_id, ev.event_type, ev.payload, ev.metadata, ev.created_at, ep.url, ep.signing_secret_enc
+     FROM deliveries d
+     JOIN events ev ON ev.id = d.event_id
+     JOIN endpoints ep ON ep.id = d.endpoint_id
+     WHERE d.id = $1`,
+    [deliveryId],
+  );
+  return result.rows[0];
 }
 
 async function readResponseBody(response: Response) {
@@ -67,6 +82,10 @@ async function readResponseBody(response: Response) {
   return body;
 }
 
+function isRetryable(statusCode: number | null) {
+  return statusCode === null || statusCode === 408 || statusCode === 425 || statusCode === 429 || statusCode >= 500;
+}
+
 async function recordDeliveryResult(
   delivery: DeliveryTarget,
   attemptNumber: number,
@@ -76,7 +95,10 @@ async function recordDeliveryResult(
   errorMessage: string | null,
 ) {
   const durationMs = Date.now() - startedAt.getTime();
-  const state = statusCode !== null && statusCode >= 200 && statusCode < 300 ? 'succeeded' : 'failed';
+  const succeeded = statusCode !== null && statusCode >= 200 && statusCode < 300;
+  const deadLettered = !succeeded && (!isRetryable(statusCode) || attemptNumber >= maxAttempts);
+  const state = succeeded ? 'succeeded' : deadLettered ? 'dead_lettered' : 'retrying';
+  const retrySeconds = Math.min(retryBaseSeconds * (2 ** Math.max(attemptNumber - 1, 0)), retryMaxSeconds);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -88,9 +110,15 @@ async function recordDeliveryResult(
     );
     await client.query(
       `UPDATE deliveries
-       SET state = $2, last_status = $3, last_error = $4, duration_ms = $5, updated_at = now()
+       SET state = $2::delivery_state,
+         last_status = $3,
+         last_error = $4,
+         duration_ms = $5,
+         next_attempt_at = CASE WHEN $2 = 'retrying' THEN now() + ($6 * interval '1 second') ELSE next_attempt_at END,
+         dead_lettered_at = CASE WHEN $2 = 'dead_lettered' THEN now() ELSE NULL END,
+         updated_at = now()
        WHERE id = $1`,
-      [delivery.id, state, statusCode, errorMessage, durationMs],
+      [delivery.id, state, statusCode, errorMessage, durationMs, retrySeconds],
     );
     await client.query('COMMIT');
   } catch (error) {
@@ -99,6 +127,10 @@ async function recordDeliveryResult(
   } finally {
     client.release();
   }
+
+  if (deadLettered) {
+    logger.warn({ deliveryId: delivery.id, attemptNumber, statusCode }, 'Delivery moved to dead letter state');
+  }
 }
 
 async function deliverOne(delivery: DeliveryTarget) {
@@ -106,15 +138,18 @@ async function deliverOne(delivery: DeliveryTarget) {
   const started = await pool.query<{ attempt_count: number }>(
     `UPDATE deliveries
      SET state = 'processing', attempt_count = attempt_count + 1, updated_at = now()
-     WHERE id = $1 AND state IN ('pending', 'failed')
+     WHERE id = $1 AND state IN ('pending', 'retrying', 'failed') AND next_attempt_at <= now()
      RETURNING attempt_count`,
     [delivery.id],
   );
-  if (!started.rowCount) return null;
+
+  const attemptNumber = started.rows[0]?.attempt_count;
+  if (!attemptNumber) return;
 
   let statusCode: number | null = null;
   let responseBody: string | null = null;
   let errorMessage: string | null = null;
+
   try {
     const url = await validateDeliveryUrl(delivery.url);
     const body = JSON.stringify({
@@ -124,14 +159,18 @@ async function deliverOne(delivery: DeliveryTarget) {
       metadata: delivery.metadata,
       createdAt: delivery.created_at,
     });
+
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const signingSecret = decryptSecret(delivery.signing_secret_enc);
+
     const signature = crypto
       .createHmac('sha256', signingSecret)
       .update(timestamp + '.' + body)
       .digest('hex');
+
     const response = await fetch(url, {
       method: 'POST',
+      redirect: 'error',
       headers: {
         'content-type': 'application/json',
         'user-agent': 'EventRelay/1.0',
@@ -143,6 +182,7 @@ async function deliverOne(delivery: DeliveryTarget) {
       body,
       signal: AbortSignal.timeout(10000),
     });
+    
     statusCode = response.status;
     responseBody = await readResponseBody(response);
     if (!response.ok) {
@@ -154,26 +194,24 @@ async function deliverOne(delivery: DeliveryTarget) {
 
   await recordDeliveryResult(
     delivery,
-    started.rows[0]?.attempt_count ?? 1,
+    attemptNumber,
     startedAt,
     statusCode,
     responseBody,
     errorMessage,
   );
-
-  if (statusCode === null || statusCode < 200 || statusCode >= 300) {
-    return errorMessage ?? 'Webhook endpoint returned HTTP ' + statusCode + '.';
-  }
-  return null;
 }
 
 export async function processEvent(eventId: string) {
   const deliveries = await loadDeliveries(eventId);
-  const errors: string[] = [];
   for (const delivery of deliveries) {
-    const error = await deliverOne(delivery);
-    if (error) errors.push(delivery.id + ': ' + error);
+    await deliverOne(delivery);
   }
-  if (errors.length) throw new Error(errors.join('; '));
   logger.info({ eventId, deliveryCount: deliveries.length }, 'Event delivery job completed');
+}
+
+export async function processDelivery(deliveryId: string) {
+  const delivery = await loadDelivery(deliveryId);
+  if (!delivery) return;
+  await deliverOne(delivery);
 }

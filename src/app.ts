@@ -10,13 +10,16 @@ import { healthRouter } from './routes/health.js';
 import { organizationsRouter } from './routes/organizations.js';
 import { resourceRouter } from './routes/resources.js';
 import { eventsRouter } from './routes/events.js';
+import { deliveriesRouter } from './routes/deliveries.js';
 
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
+  
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN }));
   app.use(express.json({ limit: '256kb', strict: true }));
+
   app.use((req, res, next) => {
     const requestId = crypto.randomUUID();
     const startedAt = Date.now();
@@ -31,11 +34,14 @@ export function createApp() {
     }, 'request completed'));
     next();
   });
+
   app.use('/health', healthRouter);
   app.use('/v1/auth', authRouter);
   app.use('/v1/events', eventsRouter);
+  app.use('/v1/organizations/:organizationId/deliveries', deliveriesRouter);
   app.use('/v1/organizations', organizationsRouter);
   app.use('/v1/organizations/:organizationId/projects', resourceRouter);
+
   app.use((_req, res) =>
     res.status(404).json({
       error: {
