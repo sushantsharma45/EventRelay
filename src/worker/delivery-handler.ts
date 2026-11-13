@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { pool } from '../db/pool.js';
 import { logger } from '../logger.js';
 import { decryptSecret } from '../utils/resource-secrets.js';
-import { validateDeliveryUrl } from '../utils/webhook-url.js';
+import { sendWebhookRequest, validateDeliveryUrl } from '../utils/webhook-url.js';
 
 interface DeliveryTarget {
   id: string;
@@ -63,23 +63,6 @@ async function loadDelivery(deliveryId: string) {
     [deliveryId],
   );
   return result.rows[0];
-}
-
-async function readResponseBody(response: Response) {
-  if (!response.body) return '';
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let body = '';
-  try {
-    while (body.length < 16000) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      body += decoder.decode(value, { stream: true }).slice(0, 16000 - body.length);
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-  }
-  return body;
 }
 
 function isRetryable(statusCode: number | null) {
@@ -168,25 +151,19 @@ async function deliverOne(delivery: DeliveryTarget) {
       .update(timestamp + '.' + body)
       .digest('hex');
 
-    const response = await fetch(url, {
-      method: 'POST',
-      redirect: 'error',
-      headers: {
-        'content-type': 'application/json',
-        'user-agent': 'EventRelay/1.0',
-        'x-eventrelay-event-id': delivery.event_id,
-        'x-eventrelay-event-type': delivery.event_type,
-        'x-eventrelay-timestamp': timestamp,
-        'x-eventrelay-signature': 't=' + timestamp + ',v1=' + signature,
-      },
-      body,
-      signal: AbortSignal.timeout(10000),
-    });
-    
-    statusCode = response.status;
-    responseBody = await readResponseBody(response);
-    if (!response.ok) {
-      errorMessage = 'Webhook endpoint returned HTTP ' + response.status + '.';
+    const response = await sendWebhookRequest(url, {
+      'content-type': 'application/json',
+      'user-agent': 'EventRelay/1.0',
+      'x-eventrelay-event-id': delivery.event_id,
+      'x-eventrelay-event-type': delivery.event_type,
+      'x-eventrelay-timestamp': timestamp,
+      'x-eventrelay-signature': 't=' + timestamp + ',v1=' + signature,
+    }, body);
+
+    statusCode = response.statusCode;
+    responseBody = response.responseBody;
+    if (statusCode < 200 || statusCode >= 300) {
+      errorMessage = 'Webhook endpoint returned HTTP ' + statusCode + '.';
     }
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : 'Webhook delivery failed.';

@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { authenticate } from '../middleware/authenticate.js';
+import { auditOrganizationChanges } from '../middleware/audit-organization-changes.js';
 import { loadOrganization, requireOrganizationRole } from '../middleware/organization-access.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
 export const deliveriesRouter = Router({ mergeParams: true });
-deliveriesRouter.use(authenticate, loadOrganization);
+deliveriesRouter.use(authenticate, loadOrganization, auditOrganizationChanges);
 
 const adminRoles = requireOrganizationRole('owner', 'admin', 'developer');
 

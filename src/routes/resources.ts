@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { pool } from '../db/pool.js';
 import { authenticate } from '../middleware/authenticate.js';
+import { auditOrganizationChanges } from '../middleware/audit-organization-changes.js';
 import { loadOrganization, requireOrganizationRole } from '../middleware/organization-access.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { encryptSecret, generateApiKey } from '../utils/resource-secrets.js';
@@ -22,7 +23,7 @@ const endpointSchema = z.object({
 
 const slugify = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'resource';
 
-resourceRouter.use(authenticate, loadOrganization);
+resourceRouter.use(authenticate, loadOrganization, auditOrganizationChanges);
 
 resourceRouter.get('/', asyncHandler(async (req, res) => {
   const result = await pool.query(

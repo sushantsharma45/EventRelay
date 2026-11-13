@@ -105,6 +105,11 @@ authRouter.post(
          VALUES ($1, $2, $3)`,
         [organization.id, user.id, 'owner'],
       );
+      await client.query(
+        `INSERT INTO audit_log (organization_id, actor_id, action, resource_type, resource_id, details)
+         VALUES ($1, $2, 'account.registered', 'organization', $1, '{}'::jsonb)`,
+        [organization.id, user.id],
+      );
       await client.query('COMMIT');
 
       res.status(201).json({

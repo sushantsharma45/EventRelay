@@ -6,9 +6,9 @@ EventRelay is a webhook delivery platform for applications that need to send eve
 
 The API provides account registration and login, short-lived bearer access tokens, authenticated account details, organization management, member management, role-based access, projects, environments, API keys, endpoint subscriptions, idempotent event ingestion, an outbox publisher, and signed webhook delivery.
 
-Authentication uses bcrypt password hashes, JWTs signed with a local secret, and rate limits on registration and login. PostgreSQL stores application and delivery data. API key secrets are stored as hashes; endpoint signing secrets are encrypted with `DATA_ENCRYPTION_KEY`.
+Authentication uses bcrypt password hashes, JWTs signed with a local secret, and rate limits on registration and login. The API also applies a per-process request limit, records organization changes in an audit log, and blocks webhook delivery to private network addresses in production. PostgreSQL stores application and delivery data. API key secrets are stored as hashes; endpoint signing secrets are encrypted with `DATA_ENCRYPTION_KEY`.
 
-Invitations by email, password reset, the dashboard is not available yet.
+Email invitations, password reset, and the dashboard are not available yet.
 
 ## Requirements
 
@@ -26,7 +26,7 @@ Invitations by email, password reset, the dashboard is not available yet.
 5. Apply migrations with `npm run db:migrate`.
 6. Start the API with `npm run dev`.
 7. In a second terminal, start the outbox publisher and delivery worker with `npm run worker`.
-8. Check API liveness at `http://localhost:4401/health` and database readiness at `http://localhost:4401/health/ready`.
+8. Check API liveness at `http://localhost:4000/health` and database readiness at `http://localhost:4000/health/ready`.
 
 ## Authentication API
 

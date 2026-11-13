@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { pool } from '../db/pool.js';
 import { authenticate } from '../middleware/authenticate.js';
+import { auditOrganizationChanges } from '../middleware/audit-organization-changes.js';
 import { loadOrganization, requireOrganizationRole, } from '../middleware/organization-access.js';
 import { asyncHandler } from '../utils/async-handler.js';
 
@@ -72,6 +73,11 @@ organizationsRouter.post(
          VALUES ($1, $2, $3)`,
         [organization.id, req.authUser?.id, 'owner'],
       );
+      await client.query(
+        `INSERT INTO audit_log (organization_id, actor_id, action, resource_type, resource_id, details)
+         VALUES ($1, $2, 'organization.created', 'organization', $1, '{}'::jsonb)`,
+        [organization.id, req.authUser?.id],
+      );
       await client.query('COMMIT');
 
       res.status(201).json({
@@ -89,6 +95,7 @@ organizationsRouter.post(
 organizationsRouter.post(
   '/:organizationId/members',
   loadOrganization,
+  auditOrganizationChanges,
   requireOrganizationRole('owner', 'admin'),
   asyncHandler(async (req, res) => {
     const parsed = memberSchema.safeParse(req.body);
@@ -159,6 +166,27 @@ organizationsRouter.post(
 );
 
 organizationsRouter.get(
+  '/:organizationId/audit',
+  loadOrganization,
+  requireOrganizationRole('owner', 'admin'),
+  asyncHandler(async (req, res) => {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const result = await pool.query(
+      `SELECT a.id, a.actor_id, u.name AS actor_name, u.email AS actor_email,
+         a.action, a.resource_type, a.resource_id, a.details, a.created_at
+       FROM audit_log a
+       LEFT JOIN users u ON u.id = a.actor_id
+       WHERE a.organization_id = $1
+       ORDER BY a.created_at DESC, a.id DESC
+       LIMIT $2 OFFSET $3`,
+      [req.organizationId, limit, offset],
+    );
+    res.json({ data: result.rows, pagination: { limit, offset } });
+  }),
+);
+
+organizationsRouter.get(
   '/:organizationId/members',
   loadOrganization,
   asyncHandler(async (req, res) => {
@@ -178,6 +206,7 @@ organizationsRouter.get(
 organizationsRouter.patch(
   '/:organizationId/members/:userId',
   loadOrganization,
+  auditOrganizationChanges,
   requireOrganizationRole('owner', 'admin'),
   asyncHandler(async (req, res) => {
     const parsed = memberRoleSchema.safeParse(req.body);
@@ -244,6 +273,7 @@ organizationsRouter.patch(
 organizationsRouter.delete(
   '/:organizationId/members/:userId',
   loadOrganization,
+  auditOrganizationChanges,
   requireOrganizationRole('owner', 'admin'),
   asyncHandler(async (req, res) => {
     const target = await pool.query<{ role: string }>(

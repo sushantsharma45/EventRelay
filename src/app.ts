@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { env } from './config/env.js';
 import { logger } from './logger.js';
 import { errorHandler } from './middleware/error-handler.js';
+import { apiRateLimiter } from './middleware/api-rate-limit.js';
 import { authRouter } from './routes/auth.js';
 import { healthRouter } from './routes/health.js';
 import { organizationsRouter } from './routes/organizations.js';
@@ -18,8 +19,6 @@ export function createApp() {
   
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN }));
-  app.use(express.json({ limit: '256kb', strict: true }));
-
   app.use((req, res, next) => {
     const requestId = crypto.randomUUID();
     const startedAt = Date.now();
@@ -34,6 +33,9 @@ export function createApp() {
     }, 'request completed'));
     next();
   });
+
+  app.use('/v1', apiRateLimiter);
+  app.use(express.json({ limit: '256kb', strict: true }));
 
   app.use('/health', healthRouter);
   app.use('/v1/auth', authRouter);

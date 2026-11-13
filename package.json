@@ -10,7 +10,7 @@
     "dev": "tsx watch src/server.ts",
     "worker": "tsx watch src/worker/index.ts",
     "build": "tsc --noEmit",
-    "test": "tsx --test tests/health.test.ts tests/auth.test.ts tests/resources.test.ts tests/ingestion.test.ts tests/delivery.test.ts",
+    "test": "tsx --test tests/health.test.ts tests/auth.test.ts tests/resources.test.ts tests/ingestion.test.ts tests/delivery.test.ts tests/security.test.ts",
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
