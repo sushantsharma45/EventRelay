@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { resolve } from 'node:path';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -43,6 +44,8 @@ export function createApp() {
   app.use('/v1/organizations/:organizationId/deliveries', deliveriesRouter);
   app.use('/v1/organizations', organizationsRouter);
   app.use('/v1/organizations/:organizationId/projects', resourceRouter);
+
+  app.use(express.static(resolve(process.cwd(), 'dist', 'web'), { index: 'index.html' }));
 
   app.use((_req, res) =>
     res.status(404).json({

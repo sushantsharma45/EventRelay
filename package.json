@@ -4,14 +4,18 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "worker": "tsx watch src/worker/index.ts",
-    "build": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build --config web/vite.config.ts",
     "test": "tsx --test tests/health.test.ts tests/auth.test.ts tests/resources.test.ts tests/ingestion.test.ts tests/delivery.test.ts tests/security.test.ts",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "dev:web": "vite --config web/vite.config.ts",
+    "preview:web": "vite preview --config web/vite.config.ts --host 127.0.0.1",
+    "dev:dashboard": "concurrently -k \"npm:dev\" \"npm:dev:web\"",
+    "dev:stack": "concurrently -k \"npm:dev\" \"npm:dev:web\" \"npm:worker\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -25,6 +29,8 @@
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.1",
     "pino": "^9.6.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -33,7 +39,12 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.10.2",
     "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "concurrently": "^10.0.7",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "^8.3.8"
   }
 }

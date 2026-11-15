@@ -4,15 +4,15 @@ EventRelay is a webhook delivery platform for applications that need to send eve
 
 ## Current capabilities
 
-The API provides account registration and login, short-lived bearer access tokens, authenticated account details, organization management, member management, role-based access, projects, environments, API keys, endpoint subscriptions, idempotent event ingestion, an outbox publisher, and signed webhook delivery.
+EventRelay provides account registration and login, organization management, role-based access, projects, environments, API keys, webhook subscriptions, idempotent event ingestion, asynchronous signed delivery, retry and replay controls, and a React operations dashboard.
 
-Authentication uses bcrypt password hashes, JWTs signed with a local secret, and rate limits on registration and login. The API also applies a per-process request limit, records organization changes in an audit log, and blocks webhook delivery to private network addresses in production. PostgreSQL stores application and delivery data. API key secrets are stored as hashes; endpoint signing secrets are encrypted with `DATA_ENCRYPTION_KEY`.
+Authentication uses bcrypt password hashes, JWTs signed with a local secret, and rate limits on registration and login. The API applies a per-process request limit, records organization changes in an audit log, and blocks webhook delivery to private network addresses in production. PostgreSQL stores application and delivery data. API key secrets are stored as hashes; endpoint signing secrets are encrypted with `DATA_ENCRYPTION_KEY`.
 
-Email invitations, password reset, and the dashboard are not available yet.
+Email invitations and password reset are not available yet.
 
 ## Requirements
 
-- Node.js 22 or newer
+- Node.js 22.12 or newer
 - npm
 - PostgreSQL 16 or newer
 - A Redis-compatible server
@@ -25,8 +25,9 @@ Email invitations, password reset, and the dashboard are not available yet.
 4. Start a Redis-compatible server at the `REDIS_URL` in `.env` (default `redis://127.0.0.1:6379`). For local webhook receiver testing, `ALLOW_PRIVATE_WEBHOOKS=true` permits private destinations only when `NODE_ENV` is not `production`.
 5. Apply migrations with `npm run db:migrate`.
 6. Start the API with `npm run dev`.
-7. In a second terminal, start the outbox publisher and delivery worker with `npm run worker`.
-8. Check API liveness at `http://localhost:4000/health` and database readiness at `http://localhost:4000/health/ready`.
+7. In another terminal, start the dashboard with `npm run dev:web` and open `http://localhost:5173`. The Vite development server proxies API calls to `PORT` from `.env` (4000 if unset).
+8. Start Redis, then start the outbox publisher and delivery worker with `npm run worker` to process deliveries. `npm run dev:dashboard` starts the API and dashboard together; `npm run dev:stack` also starts the worker and requires Redis.
+9. Check API liveness at `http://localhost:4401/health` and database readiness at `http://localhost:4401/health/ready` when using the included local `.env` (`PORT=4401`).
 
 ## Authentication API
 
@@ -41,6 +42,7 @@ All request and response bodies use JSON. Successful registration and login retu
 - `POST /v1/organizations/:organizationId/members` — add an existing account by `email` and assign `admin`, `developer`, or `viewer`.
 - `PATCH /v1/organizations/:organizationId/members/:userId` — change a member's role.
 - `DELETE /v1/organizations/:organizationId/members/:userId` — remove a member.
+- `GET /v1/organizations/:organizationId/audit` — view recent changes (owners and admins only).
 
 ## Project resources API
 
@@ -70,6 +72,12 @@ Retryable network failures and HTTP 408, 425, 429, and 5xx responses use exponen
 - `GET /v1/organizations/:organizationId/deliveries` — list delivery state and filter with `?state=dead_lettered`.
 - `GET /v1/organizations/:organizationId/deliveries/:deliveryId/attempts` — view request attempts and response details.
 - `POST /v1/organizations/:organizationId/deliveries/:deliveryId/replay` — replay a failed or dead-lettered delivery. The new delivery is queued through the outbox; a delivery can be replayed only once.
+## Dashboard
+
+The React dashboard at `http://localhost:5173` supports registration and login, organization switching, member roles, project and environment management, endpoint subscriptions, API keys, test event submission, delivery attempt inspection and replay, and admin audit history. Newly created API key and webhook signing secrets are displayed once and held only in the current browser tab.
+
+Run `npm run build` to type-check the backend and create the production dashboard under `dist/web`; the API serves these files from its root URL.
+
 ## Checks
 
 - `npm test` runs health, authentication, authorization, resource-management, ingestion, retry, dead-letter, replay, and signed-delivery tests. The signed-delivery test does not require Redis; running `npm run worker` does.
