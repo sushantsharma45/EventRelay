@@ -3,6 +3,9 @@ name: eventrelay
 x-eventrelay-environment: &eventrelay-environment
   NODE_ENV: production
   PORT: ${PORT:-4000}
+  API_METRICS_PORT: ${API_METRICS_PORT:-9464}
+  WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9465}
+  METRICS_HOST: 0.0.0.0
   CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
   DATABASE_URL: postgresql://${POSTGRES_USER:-eventrelay}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@database:5432/${POSTGRES_DB:-eventrelay}
   JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
@@ -59,6 +62,8 @@ services:
     environment: *eventrelay-environment
     ports:
       - "127.0.0.1:${PORT:-4000}:${PORT:-4000}"
+    expose:
+      - "${API_METRICS_PORT:-9464}"
     depends_on:
       database:
         condition: service_healthy
@@ -87,7 +92,41 @@ services:
       migrate:
         condition: service_completed_successfully
     command: ["node", "dist/server/worker/index.js"]
+    expose:
+      - "${WORKER_METRICS_PORT:-9465}"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:' + process.env.WORKER_METRICS_PORT + '/health/live').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    profiles: [observability]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
 
 volumes:
   postgres-data:
   redis-data:
+  prometheus-data:

@@ -4,5 +4,4 @@ dist
 coverage
 .git
 .env
-.env.*
 *.log

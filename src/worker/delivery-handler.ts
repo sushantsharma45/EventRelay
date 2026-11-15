@@ -3,6 +3,7 @@ import { pool } from '../db/pool.js';
 import { logger } from '../logger.js';
 import { decryptSecret } from '../utils/resource-secrets.js';
 import { sendWebhookRequest, validateDeliveryUrl } from '../utils/webhook-url.js';
+import { workerDeliveryAttemptsTotal, workerDeliveryDurationSeconds } from '../observability/metrics.js';
 
 interface DeliveryTarget {
   id: string;
@@ -110,6 +111,9 @@ async function recordDeliveryResult(
   } finally {
     client.release();
   }
+
+  workerDeliveryAttemptsTotal.inc({ state });
+  workerDeliveryDurationSeconds.observe({ state }, durationMs / 1000);
 
   if (deadLettered) {
     logger.warn({ deliveryId: delivery.id, attemptNumber, statusCode }, 'Delivery moved to dead letter state');

@@ -1,0 +1,34 @@
+groups:
+  - name: eventrelay
+    rules:
+      - alert: EventRelayTargetDown
+        expr: up{job=~"eventrelay-api|eventrelay-worker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "EventRelay {{ $labels.job }} metrics are unavailable"
+
+      - alert: EventRelayHighHttp5xxRate
+        expr: sum(rate(eventrelay_http_requests_total{status_code=~"5.."}[5m])) / clamp_min(sum(rate(eventrelay_http_requests_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of EventRelay API requests are failing"
+
+      - alert: EventRelayDeadLetterRateHigh
+        expr: sum(rate(eventrelay_worker_delivery_attempts_total{state="dead_lettered"}[15m])) / clamp_min(sum(rate(eventrelay_worker_delivery_attempts_total[15m])), 1) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of EventRelay webhook attempts are dead-lettered"
+
+      - alert: EventRelayWorkerSchedulerErrors
+        expr: increase(eventrelay_worker_scheduler_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The EventRelay worker scheduler is reporting errors"

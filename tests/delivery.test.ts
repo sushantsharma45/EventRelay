@@ -10,6 +10,7 @@ const { createApp } = await import('../src/app.js');
 const { pool } = await import('../src/db/pool.js');
 const { encryptSecret } = await import('../src/utils/resource-secrets.js');
 const { processDelivery, processEvent } = await import('../src/worker/delivery-handler.js');
+const { registry } = await import('../src/observability/metrics.js');
 const email = 'phase5-' + crypto.randomUUID() + '@example.test';
 let api: Server;
 let receiver: Server;
@@ -215,4 +216,14 @@ test('worker sends a signed webhook and records the successful attempt', async (
     [replay.data.deliveryId],
   );
   assert.equal(replayOutbox.rows[0]?.topic, 'delivery.replay');
+
+  const metrics = await registry.metrics();
+  for (const state of ['succeeded', 'retrying', 'dead_lettered']) {
+    assert.ok(
+      metrics.split('\n').some((line) =>
+        line.startsWith('eventrelay_worker_delivery_attempts_total') && line.includes('state="' + state + '"'),
+      ),
+      'Expected delivery metrics for ' + state,
+    );
+  }
 });

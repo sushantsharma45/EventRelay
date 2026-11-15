@@ -4,6 +4,15 @@ import { env } from '../config/env.js';
 import { pool } from '../db/pool.js';
 import { logger } from '../logger.js';
 import { processDelivery, processEvent } from './delivery-handler.js';
+import {
+  workerActiveJobs,
+  workerJobsTotal,
+  workerOutboxPublishedTotal,
+  workerRecoveryTotal,
+  workerRetryQueuedTotal,
+  workerSchedulerErrorsTotal,
+} from '../observability/metrics.js';
+import { createMetricsServer } from '../observability/metrics-server.js';
 
 interface DeliveryJob {
   eventId?: string;
@@ -64,7 +73,9 @@ async function publishOutboxBatch() {
     }
 
     await client.query('COMMIT');
-    return messages.rowCount ?? 0;
+    const publishedCount = messages.rowCount ?? 0;
+    workerOutboxPublishedTotal.inc(publishedCount);
+    return publishedCount;
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -94,7 +105,9 @@ async function queueDueRetries() {
       { ...commonJobOptions, jobId },
     );
   }
-  return result.rowCount ?? 0;
+  const queuedCount = result.rowCount ?? 0;
+  workerRetryQueuedTotal.inc(queuedCount);
+  return queuedCount;
 }
 
 async function recoverStuckDeliveries() {
@@ -110,9 +123,12 @@ async function recoverStuckDeliveries() {
   );
 
   if (recovered.rowCount) {
+    workerRecoveryTotal.inc(recovered.rowCount);
     logger.warn({ count: recovered.rowCount }, 'Stuck deliveries recovered');
   }
 }
+
+workerActiveJobs.set(0);
 
 const worker = new Worker<DeliveryJob>(
   queueName,
@@ -124,10 +140,17 @@ const worker = new Worker<DeliveryJob>(
   { connection, concurrency: 10 },
 );
 
+worker.on('active', () => {
+  workerActiveJobs.inc();
+});
 worker.on('completed', (job) => {
+  workerActiveJobs.dec();
+  workerJobsTotal.inc({ name: job.name, result: 'completed' });
   logger.info({ jobId: job.id }, 'Delivery job completed');
 });
 worker.on('failed', (job, error) => {
+  workerActiveJobs.dec();
+  workerJobsTotal.inc({ name: job?.name ?? 'unknown', result: 'failed' });
   logger.error({ jobId: job?.id, err: error }, 'Delivery job failed');
 });
 
@@ -147,11 +170,17 @@ const pollTimer = setInterval(async () => {
       recoveryRunAt = Date.now();
     }
   } catch (error) {
+    workerSchedulerErrorsTotal.inc();
     logger.error({ err: error }, 'Delivery scheduling failed');
   } finally {
     polling = false;
   }
 }, 1000);
+
+const metricsServer = createMetricsServer();
+metricsServer.listen(env.WORKER_METRICS_PORT, env.METRICS_HOST, () =>
+  logger.info({ host: env.METRICS_HOST, port: env.WORKER_METRICS_PORT }, 'Worker metrics listener started'),
+);
 
 logger.info({ queue: queueName }, 'EventRelay delivery worker started');
 
@@ -161,6 +190,9 @@ async function shutdown(signal: string) {
   shuttingDown = true;
   clearInterval(pollTimer);
   logger.info({ signal }, 'Delivery worker shutdown started');
+  await new Promise<void>((resolve, reject) =>
+    metricsServer.close((error) => (error ? reject(error) : resolve())),
+  );
   await worker.close();
   await queue.close();
   await connection.quit();

@@ -13,6 +13,7 @@ import { organizationsRouter } from './routes/organizations.js';
 import { resourceRouter } from './routes/resources.js';
 import { eventsRouter } from './routes/events.js';
 import { deliveriesRouter } from './routes/deliveries.js';
+import { httpRequestDurationSeconds, httpRequestsTotal } from './observability/metrics.js';
 
 export function createApp() {
   const app = express();
@@ -25,13 +26,22 @@ export function createApp() {
     const startedAt = Date.now();
     res.locals.requestId = requestId;
     res.setHeader('x-request-id', requestId);
-    res.on('finish', () => logger.info({
-      requestId,
-      method: req.method,
-      path: req.path,
-      statusCode: res.statusCode,
-      durationMs: Date.now() - startedAt,
-    }, 'request completed'));
+    res.on('finish', () => {
+      const route = req.route
+        ? req.baseUrl + req.route.path
+        : 'unmatched';
+      const statusCode = String(res.statusCode);
+      const durationSeconds = (Date.now() - startedAt) / 1000;
+      httpRequestsTotal.inc({ method: req.method, route, status_code: statusCode });
+      httpRequestDurationSeconds.observe({ method: req.method, route }, durationSeconds);
+      logger.info({
+        requestId,
+        method: req.method,
+        path: req.path,
+        statusCode: res.statusCode,
+        durationMs: Math.round(durationSeconds * 1000),
+      }, 'request completed');
+    });
     next();
   });
 

@@ -66,5 +66,9 @@ jobs:
           JWT_SECRET: ci-only-signing-secret-with-more-than-32-characters
           DATA_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: docker compose config --quiet
+      - name: Validate Prometheus configuration and alerts
+        run: |
+          docker run --rm --pull always --volume "$PWD/observability:/etc/prometheus:ro" --entrypoint promtool prom/prometheus:v3.16.0 check config /etc/prometheus/prometheus.yml
+          docker run --rm --pull always --volume "$PWD/observability:/etc/prometheus:ro" --entrypoint promtool prom/prometheus:v3.16.0 check rules /etc/prometheus/alerts.yml
       - name: Build production container
         run: docker build --pull --tag eventrelay:ci .

@@ -10,7 +10,7 @@
     "dev": "tsx watch src/server.ts",
     "worker": "tsx watch src/worker/index.ts",
     "build": "tsc --noEmit && tsc -p tsconfig.server.json && vite build --config web/vite.config.ts",
-    "test": "tsx --test tests/health.test.ts tests/auth.test.ts tests/resources.test.ts tests/ingestion.test.ts tests/delivery.test.ts tests/security.test.ts tests/production-security.test.ts",
+    "test": "tsx --test tests/health.test.ts tests/auth.test.ts tests/resources.test.ts tests/ingestion.test.ts tests/delivery.test.ts tests/security.test.ts tests/production-security.test.ts tests/metrics.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "dev:web": "vite --config web/vite.config.ts",
     "preview:web": "vite preview --config web/vite.config.ts --host 127.0.0.1",
@@ -20,6 +20,7 @@
     "start:worker": "node dist/server/worker/index.js"
   },
   "dependencies": {
+    "@prometheus-io/client": "^0.16.1",
     "bcryptjs": "^3.0.3",
     "bullmq": "^6.7.4",
     "cors": "^2.8.5",
