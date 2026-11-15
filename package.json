@@ -9,13 +9,15 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "worker": "tsx watch src/worker/index.ts",
-    "build": "tsc --noEmit && vite build --config web/vite.config.ts",
-    "test": "tsx --test tests/health.test.ts tests/auth.test.ts tests/resources.test.ts tests/ingestion.test.ts tests/delivery.test.ts tests/security.test.ts",
+    "build": "tsc --noEmit && tsc -p tsconfig.server.json && vite build --config web/vite.config.ts",
+    "test": "tsx --test tests/health.test.ts tests/auth.test.ts tests/resources.test.ts tests/ingestion.test.ts tests/delivery.test.ts tests/security.test.ts tests/production-security.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "dev:web": "vite --config web/vite.config.ts",
     "preview:web": "vite preview --config web/vite.config.ts --host 127.0.0.1",
     "dev:dashboard": "concurrently -k \"npm:dev\" \"npm:dev:web\"",
-    "dev:stack": "concurrently -k \"npm:dev\" \"npm:dev:web\" \"npm:worker\""
+    "dev:stack": "concurrently -k \"npm:dev\" \"npm:dev:web\" \"npm:worker\"",
+    "start": "node dist/server/server.js",
+    "start:worker": "node dist/server/worker/index.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

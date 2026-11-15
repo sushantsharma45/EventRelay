@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      database:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: eventrelay
+          POSTGRES_USER: eventrelay
+          POSTGRES_PASSWORD: ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eventrelay -d eventrelay"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      PORT: 4000
+      CORS_ORIGIN: http://localhost:5173
+      DATABASE_URL: postgresql://eventrelay:ci-password@127.0.0.1:5432/eventrelay
+      JWT_SECRET: ci-only-signing-secret-with-more-than-32-characters
+      DATA_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      REDIS_URL: redis://127.0.0.1:6379
+      ALLOW_PRIVATE_WEBHOOKS: "false"
+      LOG_LEVEL: silent
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply database migrations
+        run: npm run db:migrate
+      - name: Build API and dashboard
+        run: npm run build
+      - name: Run integration and security tests
+        run: npm test
+      - name: Validate Compose configuration
+        env:
+          POSTGRES_PASSWORD: ci-password
+          JWT_SECRET: ci-only-signing-secret-with-more-than-32-characters
+          DATA_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+        run: docker compose config --quiet
+      - name: Build production container
+        run: docker build --pull --tag eventrelay:ci .

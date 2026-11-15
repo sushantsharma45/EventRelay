@@ -80,6 +80,17 @@ Run `npm run build` to type-check the backend and create the production dashboar
 
 ## Checks
 
-- `npm test` runs health, authentication, authorization, resource-management, ingestion, retry, dead-letter, replay, and signed-delivery tests. The signed-delivery test does not require Redis; running `npm run worker` does.
-- `npm run build` runs strict TypeScript validation.
+- `npm test` runs API health and readiness, authentication, authorization, resource, event, delivery, SSRF, and audit tests. It requires a migrated PostgreSQL database. Local receiver tests do not require Redis.
+- `npm run build` validates the code, compiles the API to `dist/server`, and builds the dashboard to `dist/web`.
 - `npm run db:migrate` applies unapplied numbered SQL migrations under `src/db/migrations`.
+
+## Docker Compose
+
+Docker Compose starts PostgreSQL, Redis, a one-shot migration service, the API with the built dashboard, and the delivery worker. Set `POSTGRES_PASSWORD`, `JWT_SECRET`, and `DATA_ENCRYPTION_KEY` in `.env` before using Compose. Use a URL-safe password for `POSTGRES_PASSWORD`, since Compose uses it in `DATABASE_URL`.
+
+- `docker compose up --build` builds the production image and starts the local stack. The API is available at the configured `PORT`; PostgreSQL and Redis are bound to localhost ports 5433 and 6380 by default.
+- `docker compose ps` shows database, migration, API readiness, and worker status.
+- `docker compose down` stops containers and preserves the named database and Redis volumes.
+- `docker compose down --volumes` deletes those volumes and their data.
+
+The GitHub Actions workflow starts PostgreSQL and Redis services, installs from the lockfile, applies migrations, builds the API and dashboard, runs the integration and security tests, and builds the production image on pushes and pull requests. The project has not yet been deployed to a hosting provider.
